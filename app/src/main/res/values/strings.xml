@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">SoundAnalyse</string>
+
+<!-- TODO: Remove or change this placeholder text -->
+    <string name="SoundLevel">Current Sound Energy Level:</string>
+    <string name="SettingSoundLevel">Setting Sound Energy Level:</string>
+    <string name="SettingSounduteTime">Setting Mute Time Interval:  </string>
+    <string name="EnergyDetectEnable">Enable Energy Detect</string>
+    <string name="StartRecord">Start</string>
+
 </resources>
