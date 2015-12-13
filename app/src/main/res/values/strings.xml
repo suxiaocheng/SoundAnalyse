@@ -2,9 +2,9 @@
     <string name="app_name">SoundAnalyse</string>
 
 <!-- TODO: Remove or change this placeholder text -->
-    <string name="SoundLevel">Current Sound Energy Level:</string>
-    <string name="SettingSoundLevel">Setting Sound Energy Level:</string>
-    <string name="SettingSounduteTime">Setting Mute Time Interval:  </string>
+    <string name="SoundLevel">Current Sound Energy Level(0~100):</string>
+    <string name="SettingSoundLevel">Setting Sound Energy Level(0~100):</string>
+    <string name="SettingSounduteTime">Setting Mute Time Interval(unit: 200ms):  </string>
     <string name="EnergyDetectEnable">Enable Energy Detect</string>
     <string name="StartRecord">Start</string>
 

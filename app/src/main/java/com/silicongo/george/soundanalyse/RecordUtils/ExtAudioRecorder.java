@@ -7,6 +7,7 @@ package com.silicongo.george.soundanalyse.RecordUtils;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Objects;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -16,22 +17,21 @@ import android.util.Log;
 
 public class ExtAudioRecorder {
     private static final String TAG = "ExtAudioRecorder";
-    private static final int RECORD_ENERGY_LEVEL = 4;
+    public int energy_record_level = 1024;
 
     /* Flag to indicate if the energy check is enable */
-    private boolean energy_check_enable = false;
-
-    /* Flag to indicate if the record is started */
-    private boolean energy_check_valid = false;
-
-    /* Flag to indicate if the record is started */
-    private boolean energy_check_started = false;
+    public boolean energy_check_enable = false;
 
     /**
      * Interval to Indicate if the sound is terminate
      * in defined time (Multiple of TIMER_INTERVAL)
      */
-    private int energy_defined_invalid_time = 4;
+    public int energy_defined_invalid_time = 5;
+
+    public boolean uncompress_record_flag = false;
+
+    /* Flag to indicate if the record is started */
+    private boolean energy_check_started = false;
 
     /**
      * var to record the current invalid time, if it is max than the
@@ -39,11 +39,17 @@ public class ExtAudioRecorder {
      */
     private int energy_current_invalid_time;
 
+    private Object synchronized_record_flag_lock = new Object();
+
     private final static int[] sampleRates = {44100, 22050, 11025, 8000};
     private static ExtAudioRecorder result = null;
 
-    public boolean getRecordFinish() {
-        return energy_check_valid;
+    public int current_energy = 0;
+
+    public void settingRecordParam(int energy_invalid_time, boolean energy_check, int energy_level) {
+        energy_defined_invalid_time = energy_invalid_time;
+        energy_check_enable = energy_check;
+        energy_record_level = energy_level;
     }
 
     public static ExtAudioRecorder getInstanse(Boolean recordingCompressed) {
@@ -143,53 +149,57 @@ public class ExtAudioRecorder {
         public void onPeriodicNotification(AudioRecord recorder) {
             audioRecorder.read(buffer, 0, buffer.length); // Fill buffer
 
-            long current_energy = 0;
             cAmplitude = 0;
+
+            long current_energy_tmp = 0;
             /* Calculate the Energy level, not accuracy */
             for (int i = 0; i < buffer.length; ) {
                 if (bSamples == 16) {
                     int tmp;
                     tmp = (buffer[i] & 0x0ff) + ((int) (buffer[i + 1]) << 8) & 0x0ff00;
-                    current_energy += Math.abs((short) tmp);
+                    current_energy_tmp += Math.abs((short) tmp);
                     if (cAmplitude < Math.abs((short) tmp)) {
                         cAmplitude = Math.abs((short) tmp);
                     }
                     i += 2;
                 } else {
-                    current_energy += Math.abs((short) buffer[i]);
+                    current_energy_tmp += Math.abs((short) buffer[i]);
                     if (cAmplitude < Math.abs((short) buffer[i])) {
                         cAmplitude = Math.abs((short) buffer[i]);
                     }
                     i++;
                 }
             }
-            current_energy /= (bSamples == 16) ? buffer.length / 2 : buffer.length;
+            current_energy = (int) (current_energy_tmp /
+                    ((bSamples == 16) ? buffer.length / 2 : buffer.length));
+            if (bSamples == 8) {
+                current_energy <<= 8;
+            }
 
             //Log.d(TAG, "current_energy:" + current_energy);
             try {
-                if (energy_check_enable == true) {
-                    if (current_energy > (RECORD_ENERGY_LEVEL << ((bSamples == 16) ? 8 : 0))) {
-                        if (energy_check_valid == true) {
-                            randomAccessWriter.write(buffer); // Write buffer to file
-                            payloadSize += buffer.length;
-                            energy_current_invalid_time = energy_defined_invalid_time;
-                            energy_check_started = true;
-                        }
-                    } else {
-                        if (energy_check_valid == true) {
-                            if (energy_check_started == true) {
+                synchronized (synchronized_record_flag_lock) {
+                    if (uncompress_record_flag == true) {
+                        if (energy_check_enable == true) {
+                            if (current_energy > (energy_record_level)) {
                                 randomAccessWriter.write(buffer); // Write buffer to file
                                 payloadSize += buffer.length;
-                                energy_current_invalid_time--;
-                                if (energy_current_invalid_time <= 0) {
-                                    energy_check_valid = false;
+                                energy_current_invalid_time = energy_defined_invalid_time;
+                                energy_check_started = true;
+                            } else {
+                                if ((energy_check_started == true) && (energy_current_invalid_time >= 0)) {
+                                    randomAccessWriter.write(buffer); // Write buffer to file
+                                    payloadSize += buffer.length;
+                                    energy_current_invalid_time--;
+                                } else {
+                                    energy_check_started = false;
                                 }
                             }
+                        } else {
+                            randomAccessWriter.write(buffer); // Write buffer to file
+                            payloadSize += buffer.length;
                         }
                     }
-                } else {
-                    randomAccessWriter.write(buffer); // Write buffer to file
-                    payloadSize += buffer.length;
                 }
             } catch (IOException e) {
                 Log.e(ExtAudioRecorder.class.getName(),
@@ -212,7 +222,6 @@ public class ExtAudioRecorder {
      */
     public ExtAudioRecorder(boolean uncompressed, int audioSource,
                             int sampleRate, int channelConfig, int audioFormat) {
-        energy_check_valid = true;
         try {
             rUncompressed = uncompressed;
             if (rUncompressed) { // RECORDING_UNCOMPRESSED
@@ -421,7 +430,7 @@ public class ExtAudioRecorder {
         if (state == State.RECORDING) {
             stop();
         } else {
-            if ((state == State.READY) & (rUncompressed)) {
+            if ((state == State.READY) && (rUncompressed)) {
                 try {
                     randomAccessWriter.close(); // Remove prepared file
                 } catch (IOException e) {
@@ -505,16 +514,22 @@ public class ExtAudioRecorder {
                 audioRecorder.stop();
 
                 try {
-                    randomAccessWriter.seek(4); // Write size to RIFF header
-                    randomAccessWriter.writeInt(Integer
-                            .reverseBytes(36 + payloadSize));
+                    if (payloadSize > 0) {
+                        randomAccessWriter.seek(4); // Write size to RIFF header
+                        randomAccessWriter.writeInt(Integer
+                                .reverseBytes(36 + payloadSize));
 
-                    randomAccessWriter.seek(40); // Write size to Subchunk2Size
-                    // field
-                    randomAccessWriter.writeInt(Integer
-                            .reverseBytes(payloadSize));
+                        randomAccessWriter.seek(40); // Write size to Subchunk2Size
+                        // field
+                        randomAccessWriter.writeInt(Integer
+                                .reverseBytes(payloadSize));
 
-                    randomAccessWriter.close();
+                        randomAccessWriter.close();
+                    } else {
+                        randomAccessWriter.close();
+                        /* Because no data was written to the file, delete the file anyway */
+                        (new File(filePath)).delete();
+                    }
                 } catch (IOException e) {
                     Log.e(ExtAudioRecorder.class.getName(),
                             "I/O exception occured while closing output file");
@@ -559,6 +574,23 @@ public class ExtAudioRecorder {
         result.start();
         return file;
     }
+
+    /**
+     * Setting the compress format start to write to file
+     */
+    public boolean setStartFlag(boolean status) {
+        boolean ret = false;
+        synchronized (synchronized_record_flag_lock) {
+            if (uncompress_record_flag ^ status) {
+                energy_check_started = false;
+                energy_current_invalid_time = 0x0;
+            }
+            uncompress_record_flag = status;
+            ret = true;
+        }
+        return ret;
+    }
+
 
     /**
      * 停止录音
