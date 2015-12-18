@@ -17,27 +17,32 @@ import android.util.Log;
 
 public class ExtAudioRecorder {
     private static final String TAG = "ExtAudioRecorder";
-    public int energy_record_level = 1024;
-
-    /* Flag to indicate if the energy check is enable */
-    public boolean energy_check_enable = false;
-
+    /**
+     * Energy level to detect sound level
+     */
+    public int setting_energy_record_level = 1024;
+    /**
+     *  Flag to indicate if the energy check is enable
+     */
+    public boolean setting_energy_check_enable = false;
     /**
      * Interval to Indicate if the sound is terminate
      * in defined time (Multiple of TIMER_INTERVAL)
      */
-    public int energy_defined_invalid_time = 5;
+    public int setting_energy_invalid_time = 5;
 
-    public boolean uncompress_record_flag = false;
+    public boolean uncompress_recording = false;
 
-    /* Flag to indicate if the record is started */
-    private boolean energy_check_started = false;
+    /**
+     *  Flag to indicate if the record is started
+     */
+    private boolean uncompress_record_energy_check = false;
 
     /**
      * var to record the current invalid time, if it is max than the
-     * energy_defined_invalid_time, then quit
+     * setting_energy_invalid_time, then quit
      */
-    private int energy_current_invalid_time;
+    private int uncompress_current_invalid_time;
 
     private Object synchronized_record_flag_lock = new Object();
 
@@ -47,9 +52,9 @@ public class ExtAudioRecorder {
     public int current_energy = 0;
 
     public void settingRecordParam(int energy_invalid_time, boolean energy_check, int energy_level) {
-        energy_defined_invalid_time = energy_invalid_time;
-        energy_check_enable = energy_check;
-        energy_record_level = energy_level;
+        setting_energy_invalid_time = energy_invalid_time;
+        setting_energy_check_enable = energy_check;
+        setting_energy_record_level = energy_level;
     }
 
     public static ExtAudioRecorder getInstanse(Boolean recordingCompressed) {
@@ -77,12 +82,7 @@ public class ExtAudioRecorder {
      */
     public enum State {
         INITIALIZING, READY, RECORDING, ERROR, STOPPED
-    }
-
-    ;
-
-    public static final boolean RECORDING_UNCOMPRESSED = true;
-    public static final boolean RECORDING_COMPRESSED = false;
+    };
 
     // The interval in which the recorded samples are output to the file
     // Used only in uncompressed mode
@@ -152,20 +152,21 @@ public class ExtAudioRecorder {
             cAmplitude = 0;
 
             long current_energy_tmp = 0;
+            int tmp;
             /* Calculate the Energy level, not accuracy */
             for (int i = 0; i < buffer.length; ) {
                 if (bSamples == 16) {
-                    int tmp;
-                    tmp = (buffer[i] & 0x0ff) + ((int) (buffer[i + 1]) << 8) & 0x0ff00;
-                    current_energy_tmp += Math.abs((short) tmp);
-                    if (cAmplitude < Math.abs((short) tmp)) {
-                        cAmplitude = Math.abs((short) tmp);
+                    tmp = Math.abs((short)((buffer[i] & 0x0ff) + ((int) (buffer[i + 1]) << 8) & 0x0ff00));
+                    current_energy_tmp +=  tmp;
+                    if (cAmplitude < tmp) {
+                        cAmplitude = tmp;
                     }
                     i += 2;
                 } else {
-                    current_energy_tmp += Math.abs((short) buffer[i]);
-                    if (cAmplitude < Math.abs((short) buffer[i])) {
-                        cAmplitude = Math.abs((short) buffer[i]);
+                    tmp = Math.abs((short) buffer[i]);
+                    current_energy_tmp += tmp;
+                    if (cAmplitude < tmp) {
+                        cAmplitude = tmp;
                     }
                     i++;
                 }
@@ -179,20 +180,20 @@ public class ExtAudioRecorder {
             //Log.d(TAG, "current_energy:" + current_energy);
             try {
                 synchronized (synchronized_record_flag_lock) {
-                    if (uncompress_record_flag == true) {
-                        if (energy_check_enable == true) {
-                            if (current_energy > (energy_record_level)) {
+                    if (uncompress_recording == true) {
+                        if (setting_energy_check_enable == true) {
+                            if (current_energy > (setting_energy_record_level)) {
                                 randomAccessWriter.write(buffer); // Write buffer to file
                                 payloadSize += buffer.length;
-                                energy_current_invalid_time = energy_defined_invalid_time;
-                                energy_check_started = true;
+                                uncompress_current_invalid_time = setting_energy_invalid_time;
+                                uncompress_record_energy_check = true;
                             } else {
-                                if ((energy_check_started == true) && (energy_current_invalid_time >= 0)) {
+                                if ((uncompress_record_energy_check == true) && (uncompress_current_invalid_time >= 0)) {
                                     randomAccessWriter.write(buffer); // Write buffer to file
                                     payloadSize += buffer.length;
-                                    energy_current_invalid_time--;
+                                    uncompress_current_invalid_time--;
                                 } else {
-                                    energy_check_started = false;
+                                    uncompress_record_energy_check = false;
                                 }
                             }
                         } else {
@@ -546,14 +547,6 @@ public class ExtAudioRecorder {
         }
     }
 
-    /*
-     *
-     * Converts a byte[2] to a short, in LITTLE_ENDIAN format
-     */
-    private short getShort(byte argB1, byte argB2) {
-        return (short) (argB1 | (argB2 << 8));
-    }
-
     /**
      * 录制wav格式文件
      *
@@ -581,11 +574,11 @@ public class ExtAudioRecorder {
     public boolean setStartFlag(boolean status) {
         boolean ret = false;
         synchronized (synchronized_record_flag_lock) {
-            if (uncompress_record_flag ^ status) {
-                energy_check_started = false;
-                energy_current_invalid_time = 0x0;
+            if (uncompress_recording ^ status) {
+                uncompress_record_energy_check = false;
+                uncompress_current_invalid_time = 0x0;
             }
-            uncompress_record_flag = status;
+            uncompress_recording = status;
             ret = true;
         }
         return ret;

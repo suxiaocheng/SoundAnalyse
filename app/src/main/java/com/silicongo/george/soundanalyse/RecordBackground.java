@@ -65,7 +65,9 @@ public class RecordBackground extends Service {
         thread.start();
 
         /* start the record operation */
-        recordMedia();
+        if(recordMedia() == true){
+            setRecordParam(4, false, 1024);
+        }
 
         // Get the HandlerThread's Looper and use it for our Handler
         mServiceLooper = thread.getLooper();
@@ -133,7 +135,7 @@ public class RecordBackground extends Service {
             SimpleDateFormat sDateFormat = new SimpleDateFormat("yyyy-MM-dd hh-mm-ss");
             String filename = "Record " + sDateFormat.format(new java.util.Date()) + ".wav";
             last_record_file = RECORD_DIR + File.separator + filename;
-            recorder = ExtAudioRecorder.getInstanse(false); // 未压缩的录音（WAV）
+            recorder = ExtAudioRecorder.getInstanse(true); // 未压缩的录音（WAV）
             recorder.recordChat(RECORD_DIR + File.separator, filename);
             if (recorder.getState() != ExtAudioRecorder.State.ERROR) {
                 return true;
@@ -159,22 +161,22 @@ public class RecordBackground extends Service {
     public boolean getRecordState(){
         if(recorder != null){
             if(recorder.getState() == ExtAudioRecorder.State.RECORDING){
-                return recorder.uncompress_record_flag;
+                return recorder.uncompress_recording;
             }
         }
         return false;
     }
 
     public boolean getRecordEnergyDetectEnable(){
-        return recorder.energy_check_enable;
+        return recorder.setting_energy_check_enable;
     }
 
     public int getRecordSoundLevel(){
-        return recorder.energy_record_level;
+        return recorder.setting_energy_record_level;
     }
 
     public int getRecordSoundMuteTime(){
-        return recorder.energy_defined_invalid_time;
+        return recorder.setting_energy_invalid_time;
     }
 
     public boolean setRecordParam(int energy_invalid_time, boolean energy_check, int energy_level){

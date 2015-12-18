@@ -38,18 +38,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
 
     private OnFragmentInteractionListener mListener;
 
-    /* TextView */
-    private TextView tvSoundLevelVal;
-    private TextView tvSettingSoundLevel;
-    private TextView tvSettingSoundMuteTime;
-
-    /* CheckBox */
-    private CheckBox cbEnergyDetectEnable;
-
-    /* SeekBar */
-    private SeekBar sbSettingSoundLevel;
-    private SeekBar sbSettingSoundMuteTime;
-
     /* Button */
     private Button btStartRecord;
 
@@ -60,7 +48,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
 
     /* AsyncTask to update display */
     private UpdateDisplayAsyncTask updateDisplayAsyncTask;
-    private final double logValMax = Math.log10(0xffff);
 
     /**
      * Use this factory method to create a new instance of
@@ -99,12 +86,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
         // Inflate the layout for this fragment
         View view = inflater.inflate(R.layout.fragment_record_job, container, false);
 
-        tvSoundLevelVal = (TextView) view.findViewById(R.id.tvSoundLevelVal);
-        cbEnergyDetectEnable = (CheckBox) view.findViewById(R.id.cbEnergyDetectEnable);
-        tvSettingSoundLevel = (TextView) view.findViewById(R.id.tvSettingSoundLevel);
-        sbSettingSoundLevel = (SeekBar) view.findViewById(R.id.sbSettingSoundLevel);
-        tvSettingSoundMuteTime = (TextView) view.findViewById(R.id.tvSettingSoundMuteTime);
-        sbSettingSoundMuteTime = (SeekBar) view.findViewById(R.id.sbSettingSoundMuteTime);
         btStartRecord = (Button) view.findViewById(R.id.btStartRecord);
 
         btStartRecord.setOnClickListener(this);
@@ -120,19 +101,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
     void initDisplayUI() {
         btStartRecord.setEnabled(true);
         btStartRecord.setText((mService.getRecordState() == true) ? "Stop" : "Start");
-        cbEnergyDetectEnable.setChecked(mService.getRecordEnergyDetectEnable());
-        int level = (int)(Math.log10(mService.getRecordSoundLevel()) * 100 / logValMax);
-        String strTmp = String.format("%s[%d]",
-                getContext().getResources().getText(R.string.SettingSoundLevel),
-                level);
-        tvSettingSoundLevel.setText(strTmp);
-        sbSettingSoundLevel.setProgress(level);
-
-        strTmp = String.format("%s[%d]",
-                getContext().getResources().getText(R.string.SettingSounduteTime),
-                mService.getRecordSoundMuteTime());
-        tvSettingSoundMuteTime.setText(strTmp);
-        sbSettingSoundMuteTime.setProgress(mService.getRecordSoundMuteTime());
     }
 
     @Override
@@ -206,9 +174,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.btStartRecord:
-                int level = (int)Math.pow(10, (double) sbSettingSoundLevel.getProgress() * logValMax / 100);
-                mService.setRecordParam(sbSettingSoundMuteTime.getProgress(),
-                        cbEnergyDetectEnable.isEnabled(), level);
                 mService.setRecordStart(!mService.getRecordState());
                 initDisplayUI();
                 break;
@@ -243,10 +208,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
 
     private class UpdateDisplayAsyncTask extends AsyncTask<Void, Integer, Void> {
         private static final String TAG = "UpdateDisplayAsyncTask";
-        private int lastEnergyLevel;
-        private int maxEnergyLevel = 0x0;
-
-        private int iUpdateCount = 0x0;
 
         public UpdateDisplayAsyncTask() {
         }
@@ -259,20 +220,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
             Integer[] progress = new Integer[1];
             while (isCancelled() == false) {
                 if (mService != null) {
-                    lastEnergyLevel = mService.getRecordCurrentEnergy();
-                    if (maxEnergyLevel < lastEnergyLevel) {
-                        maxEnergyLevel = lastEnergyLevel;
-                    }
-                    iUpdateCount++;
-                    /* 500ms Max Update Time Used */
-                    if (iUpdateCount > 5) {
-                        iUpdateCount = 0x0;
-                        progress[0] = new Integer(maxEnergyLevel);
-                        publishProgress(progress);
-
-                        maxEnergyLevel = 0x0;
-                    }
-
                     synchronized (this) {
                         try {
                             wait(100);
@@ -289,10 +236,6 @@ public class RecordJob extends Fragment implements View.OnClickListener {
         }
 
         protected void onProgressUpdate(Integer... progress) {
-            int val = progress[0];
-            double dPercent = Math.log10(val) / logValMax;
-            int iPercent = (int) (dPercent * 100);
-            tvSoundLevelVal.setText("[" + iPercent + "]");
         }
     }
 }
